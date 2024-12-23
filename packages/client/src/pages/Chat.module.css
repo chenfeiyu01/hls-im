@@ -114,4 +114,12 @@
 .messageSelf .messageText {
   background: #95de64;
   color: #fff;
+}
+
+.chatItem[data-is-group="true"] {
+  background-color: #fafafa;
+}
+
+.chatItem[data-is-group="true"]:hover {
+  background-color: #f0f0f0;
 } 

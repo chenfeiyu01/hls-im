@@ -11,6 +11,7 @@ interface ChatUser {
   id: string
   username: string
   socketId: string
+  isGroup?: boolean
 }
 
 interface Message {
@@ -19,6 +20,7 @@ interface Message {
   from: ChatUser
   to: ChatUser
   timestamp: Date
+  isGroupMessage?: boolean
 }
 
 const Chat: React.FC = () => {
@@ -100,6 +102,8 @@ const Chat: React.FC = () => {
 
   const renderMessage = (msg: Message) => {
     const isSelf = msg.from.id === currentUser.id
+    const isGroupMessage = msg.isGroupMessage
+    
     return (
       <div
         key={msg.id}
@@ -110,7 +114,11 @@ const Chat: React.FC = () => {
         <Avatar icon={<UserOutlined />} />
         <div className={styles.messageContent}>
           <div className={styles.messageUser}>
-            {isSelf ? '我' : msg.from.username}
+            {isGroupMessage ? (
+              <span>{isSelf ? '我' : msg.from.username}</span>
+            ) : (
+              isSelf ? '我' : msg.from.username
+            )}
           </div>
           <div className={styles.messageText}>{msg.content}</div>
         </div>
