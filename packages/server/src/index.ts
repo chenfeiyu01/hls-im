@@ -3,34 +3,74 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
 import routes from './routes/index.js'
-import config from './config/index.js'
 
 const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: {
-    origin: config.clientUrl,
+    origin: '*',
     methods: ['GET', 'POST']
   }
 })
 
-// 中间件
+// 存储在线用户
+const onlineUsers = new Map()
+// 存储消息历史
+const messageHistory = new Map<string, any[]>()
+
 app.use(cors())
 app.use(express.json())
-
-// 路由
 app.use('/api', routes)
 
-// Socket.IO 连接处理
 io.on('connection', (socket) => {
   console.log('用户连接:', socket.id)
+  
+  // 用户登录
+  socket.on('user:login', (user) => {
+    onlineUsers.set(socket.id, { ...user, socketId: socket.id })
+    // 广播在线用户列表
+    io.emit('users:online', Array.from(onlineUsers.values()))
+  })
 
+  // 断开连接
   socket.on('disconnect', () => {
     console.log('用户断开连接:', socket.id)
+    onlineUsers.delete(socket.id)
+    io.emit('users:online', Array.from(onlineUsers.values()))
+  })
+
+  // 处理新消息
+  socket.on('message:send', (message) => {
+    console.log('message:send', message)
+    const { from, to, content } = message
+    const chatId = [from.id, to.id].sort().join(':')
+    
+    // 保存消息
+    if (!messageHistory.has(chatId)) {
+      messageHistory.set(chatId, [])
+    }
+    const newMessage = {
+      id: Date.now().toString(),
+      content,
+      from,
+      to,
+      timestamp: new Date()
+    }
+    messageHistory.get(chatId)?.push(newMessage)
+
+    // 发送给相关用户
+    io.to(to.socketId).emit('message:receive', newMessage)
+    socket.emit('message:receive', newMessage)
+  })
+
+  // 获取历史消息
+  socket.on('message:history', ({ userId1, userId2 }) => {
+    const chatId = [userId1, userId2].sort().join(':')
+    const messages = messageHistory.get(chatId) || []
+    socket.emit('message:history', messages)
   })
 })
 
-// 启动服务器
 const PORT = process.env.PORT || 3000
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)

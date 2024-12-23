@@ -10,12 +10,12 @@ function App() {
     <Router>
       <Layout className="layout">
         <Header>
-          <div className="logo">IM App</div>
+          <div className="logo">和联胜 阅后即焚</div>
         </Header>
         <Content style={{ padding: '24px' }}>
           <AppRoutes />
         </Content>
-        <Footer style={{ textAlign: 'center' }}>IM App ©{new Date().getFullYear()}</Footer>
+        <Footer style={{ textAlign: 'center' }}>和联胜 阅后即焚 ©{new Date().getFullYear()}</Footer>
       </Layout>
     </Router>
   )
