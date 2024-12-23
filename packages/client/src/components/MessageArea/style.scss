@@ -1,0 +1,49 @@
+@import '@/styles/variables.scss';
+
+.message-area {
+  flex: 1;
+  padding: $spacing-lg;
+  overflow-y: auto;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+  }
+}
+
+.message-item {
+  display: flex;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+  padding: 0 $spacing-md;
+  
+  &.message-self {
+    flex-direction: row-reverse;
+    
+    .message-text {
+      background: $success-color;
+      color: #fff;
+    }
+  }
+}
+
+.message-content {
+  max-width: 60%;
+}
+
+.message-user {
+  font-size: 12px;
+  color: $text-secondary;
+  margin-bottom: $spacing-xs;
+}
+
+.message-text {
+  background: #e6f7ff;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $border-radius;
+  word-break: break-all;
+} 

@@ -1,0 +1,214 @@
+@import '@/styles/variables.scss';
+
+.chatLayout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 $spacing-lg;
+  background: #fff;
+  border-bottom: 1px solid $border-color;
+  height: $header-height;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.username {
+  color: $text-color;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.sider {
+  background: #fff;
+  border-right: 1px solid $border-color;
+  overflow: hidden;
+}
+
+.chatList {
+  height: 100%;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+  }
+}
+
+.chatItem {
+  padding: $spacing-md $spacing-lg;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  border-bottom: 1px solid $border-color;
+  padding: $spacing-md $spacing-lg !important;
+
+  &:hover {
+    background-color: #f5f5f5;
+  }
+
+  &[data-is-group="true"] {
+    background-color: #fafafa;
+
+    &:hover {
+      background-color: #f0f0f0;
+    }
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  height: calc(100vh - #{$header-height});
+}
+
+.chatHeader {
+  padding: $spacing-md $spacing-lg;
+  border-bottom: 1px solid $border-color;
+  font-size: 16px;
+  font-weight: 500;
+  height: 64px;
+  display: flex;
+  align-items: center;
+}
+
+.messageArea {
+  flex: 1;
+  padding: $spacing-lg;
+  overflow-y: auto;
+  // background: #f7f7f7;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+  }
+}
+
+.inputArea {
+  border-top: 1px solid $border-color;
+  padding: $spacing-md $spacing-lg;
+  display: flex;
+  gap: $spacing-md;
+  background: #fff;
+}
+
+.noChat {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: $text-secondary;
+  font-size: 16px;
+  background: #f7f7f7;
+}
+
+.messageItem {
+  display: flex;
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+  padding: 0 $spacing-md;
+  align-items: flex-start;
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    align-self: flex-end;
+  }
+
+  &.messageSelf {
+    flex-direction: row-reverse;
+
+    .messageText {
+      background: #1d9bf0;
+      color: #fff;
+      border-radius: 18px 18px 4px 18px;
+      margin-right: 8px;
+    }
+
+    .messageUser {
+      text-align: right;
+    }
+  }
+
+  &:not(.messageSelf) {
+    .messageText {
+      margin-left: 8px;
+    }
+  }
+}
+
+.messageContent {
+  max-width: 70%;
+  // min-width: 100px;
+  position: relative;
+}
+
+.messageUser {
+  font-size: 13px;
+  color: $text-secondary;
+  margin-bottom: 6px;
+  font-weight: 500;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: absolute;
+  top: -18px;
+  left: 0;
+}
+
+.messageTime {
+  font-size: 12px;
+  color: $text-secondary;
+  font-weight: normal;
+  transition: opacity 0.2s ease;
+  opacity: 0;
+}
+
+.messageItem:hover {
+  .messageTime {
+    opacity: 1;
+  }
+}
+
+.messageSelf {
+  // ... 其他样式保持不变
+  .messageUser {
+    // justify-content: flex-end;
+    position: absolute;
+    top: -18px;
+    right: 0;
+
+    display: flex;
+    flex-direction: row-reverse;
+  }
+}
+
+.messageText {
+  background: #f0f0f0;
+  padding: 12px 16px;
+  border-radius: 18px 18px 18px 4px;
+  word-break: break-all;
+  font-size: 15px;
+  line-height: 1.4;
+  box-shadow: none;
+  position: relative;
+}
