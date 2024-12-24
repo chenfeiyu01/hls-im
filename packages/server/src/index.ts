@@ -115,7 +115,7 @@ io.on('connection', (socket) => {
   })
 })
 
-const PORT = 6000
+const PORT = 3000
 // @ts-ignore
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`)
