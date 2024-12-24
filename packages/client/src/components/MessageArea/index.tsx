@@ -1,7 +1,7 @@
 import React from 'react'
 import { Avatar } from 'antd'
 import { UserOutlined } from '@ant-design/icons'
-import { Message, ChatUser } from '@/types'
+import { Message, ChatUser } from '../../types'
 import './style.scss'
 
 interface Props {

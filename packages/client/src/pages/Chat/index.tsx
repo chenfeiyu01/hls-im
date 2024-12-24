@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Layout, Button, Input, List, Avatar, Badge } from 'antd'
+import { Layout, Button, Input, List, Avatar } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { SendOutlined, UserOutlined } from '@ant-design/icons'
+import { SendOutlined } from '@ant-design/icons'
 import { io, Socket } from 'socket.io-client'
 import styles from './index.module.scss'
 
