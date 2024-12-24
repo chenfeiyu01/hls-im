@@ -53,7 +53,7 @@ const Chat: React.FC = () => {
     // 连接 Socket.IO 服务器
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/'
     console.log('SOCKET_URL', import.meta.env.VITE_SOCKET_URL, SOCKET_URL)
-    const newSocket = io('/', {
+    const newSocket = io('http://124.221.97.100:3000', {
       reconnection: false
     })
     

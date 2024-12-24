@@ -33,15 +33,15 @@ app.use('/api', routes)
 
 io.on('connection', (socket) => {
   console.log('用户连接:', socket.id)
-  
+
   // 用户登录
   socket.on('user:login', (user) => {
     // 将用户加入群聊房间
     socket.join(GROUP_ID)
-    
+
     onlineUsers.set(socket.id, { ...user, socketId: socket.id })
     const onlineUsersList = Array.from(onlineUsers.values())
-    
+
     // 广播在线用户列表，包含群聊
     io.emit('users:online', [groupChat, ...onlineUsersList])
   })
@@ -58,7 +58,7 @@ io.on('connection', (socket) => {
   socket.on('message:send', (message) => {
     console.log('message:send', message)
     const { from, to, content } = message
-    
+
     // 处理群聊消息
     if (to.id === GROUP_ID) {
       const newMessage = {
@@ -69,13 +69,13 @@ io.on('connection', (socket) => {
         timestamp: new Date(),
         isGroupMessage: true
       }
-      
+
       // 保存群聊消息
       if (!messageHistory.has(GROUP_ID)) {
         messageHistory.set(GROUP_ID, [])
       }
       messageHistory.get(GROUP_ID)?.push(newMessage)
-      
+
       // 广播给所有群成员
       io.to(GROUP_ID).emit('message:receive', newMessage)
       return
@@ -115,7 +115,8 @@ io.on('connection', (socket) => {
   })
 })
 
-const PORT = process.env.PORT || 3000
-httpServer.listen(PORT, () => {
+const PORT = process.env.PORT || 6000
+// @ts-ignore
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`)
 }) 
