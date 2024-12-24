@@ -51,8 +51,10 @@ const Chat: React.FC = () => {
 
   useEffect(() => {
     // 连接 Socket.IO 服务器
-    const newSocket = io('http://localhost:3000', {
-      reconnection: false // 禁用自动重连
+    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/'
+    console.log('SOCKET_URL', import.meta.env.VITE_SOCKET_URL, SOCKET_URL)
+    const newSocket = io('/', {
+      reconnection: false
     })
     
     // 发送登录信息
