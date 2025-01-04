@@ -35,6 +35,11 @@ const getAvatarText = (username: string): string => {
   return firstChar
 }
 
+// 在文件顶部添加一个检测移动设备的函数
+const isMobile = () => {
+  return window.innerWidth <= 768
+}
+
 const Chat: React.FC = () => {
   const navigate = useNavigate()
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
@@ -44,6 +49,10 @@ const Chat: React.FC = () => {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const messageEndRef = useRef<HTMLDivElement>(null)
+  // 添加一个状态来控制在移动端时侧边栏的显示
+  const [showSider, setShowSider] = useState(!isMobile())
+  // 添加状态来跟踪当前激活的消息
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null)
 
   const scrollToBottom = () => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -54,23 +63,23 @@ const Chat: React.FC = () => {
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/'
     console.log('SOCKET_URL', import.meta.env.VITE_SOCKET_URL, SOCKET_URL)
     const newSocket = io('https://hls.chenpaopao.com:8888', {
-      reconnection: false
-    });
-    
+      reconnection: false,
+    })
+
     // 发送登录信息
     newSocket.emit('user:login', {
       id: currentUser.id,
-      username: currentUser.username
+      username: currentUser.username,
     })
 
     // 监听在线用户列表更新
     newSocket.on('users:online', (users: ChatUser[]) => {
-      setOnlineUsers(users.filter(user => user.socketId !== newSocket.id))
+      setOnlineUsers(users.filter((user) => user.socketId !== newSocket.id))
     })
 
     // 接收新消息
     newSocket.on('message:receive', (message: Message) => {
-      setMessages(prev => [...prev, message])
+      setMessages((prev) => [...prev, message])
     })
 
     setSocket(newSocket)
@@ -91,7 +100,7 @@ const Chat: React.FC = () => {
     if (selectedUser && socket) {
       socket.emit('message:history', {
         userId1: currentUser.id,
-        userId2: selectedUser.id
+        userId2: selectedUser.id,
       })
 
       socket.on('message:history', (history: Message[]) => {
@@ -99,6 +108,16 @@ const Chat: React.FC = () => {
       })
     }
   }, [selectedUser, socket])
+
+  // 在 useEffect 中添加窗口大小变化监听
+  useEffect(() => {
+    const handleResize = () => {
+      setShowSider(!isMobile())
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const handleLogout = () => {
     socket?.close()
@@ -113,15 +132,23 @@ const Chat: React.FC = () => {
       from: {
         id: currentUser.id,
         username: currentUser.username,
-        socketId: socket.id
+        socketId: socket.id,
       },
       to: selectedUser,
-      content: message
+      content: message,
     }
 
     console.log('newMessage', newMessage)
     socket.emit('message:send', newMessage)
     setMessage('')
+  }
+
+  const handleMessageClick = (messageId: string) => {
+    if (activeMessageId === messageId) {
+      setActiveMessageId(null)
+    } else {
+      setActiveMessageId(messageId)
+    }
   }
 
   const renderMessage = (msg: Message) => {
@@ -131,33 +158,38 @@ const Chat: React.FC = () => {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false
+      hour12: false,
     })
-    
+
     return (
       <div
         key={msg.id}
-        className={`${styles.messageItem} ${
-          isSelf ? styles.messageSelf : ''
+        className={`${styles.messageItem} ${isSelf ? styles.messageSelf : ''} ${
+          activeMessageId === msg.id ? styles.messageItemActive : ''
         }`}
+        onClick={() => handleMessageClick(msg.id)}
       >
-        <Avatar 
+        <Avatar
           className={styles.avatar}
           size={40}
-          style={{ 
+          style={{
             backgroundColor: isSelf ? '#1d9bf0' : '#f0f0f0',
-            color: isSelf ? '#fff' : '#666'
+            color: isSelf ? '#fff' : '#666',
           }}
         >
           {getAvatarText(msg.from.username)}
         </Avatar>
         <div className={styles.messageContent}>
           <div className={styles.messageUser}>
-            {isGroupMessage ? (
-              <span>{isSelf ? '我' : msg.from.username}</span>
-            ) : (
-              isSelf ? '我' : msg.from.username
-            )}
+            <span className={styles.messageUserName}>
+              {isGroupMessage
+                ? isSelf
+                  ? '我'
+                  : msg.from.username
+                : isSelf
+                  ? '我'
+                  : msg.from.username}
+            </span>
             <span className={styles.messageTime}>{messageTime}</span>
           </div>
           <div className={styles.messageText}>{msg.content}</div>
@@ -169,6 +201,11 @@ const Chat: React.FC = () => {
   return (
     <Layout className={styles.chatLayout}>
       <Header className={styles.header}>
+        {isMobile() && selectedUser && (
+          <Button className={styles.backButton} onClick={() => setSelectedUser(null)}>
+            返回
+          </Button>
+        )}
         <div className={styles.userInfo}>
           <Avatar style={{ backgroundColor: '#1d9bf0', color: '#fff' }}>
             {getAvatarText(currentUser.username)}
@@ -178,70 +215,71 @@ const Chat: React.FC = () => {
         <Button onClick={handleLogout}>退出</Button>
       </Header>
       <Layout>
-        <Sider width={300} className={styles.sider}>
-          <List
-            className={styles.chatList}
-            itemLayout="horizontal"
-            dataSource={onlineUsers}
-            renderItem={(item) => (
-              <List.Item
-                className={styles.chatItem}
-                onClick={() => setSelectedUser(item)}
-              >
-                <List.Item.Meta
-                  avatar={
-                    <Avatar style={{ backgroundColor: '#f0f0f0', color: '#666' }}>
-                      {getAvatarText(item.username)}
-                    </Avatar>
-                  }
-                  title={item.username}
-                />
-              </List.Item>
-            )}
-          />
-        </Sider>
-        <Content className={styles.content}>
-          {selectedUser ? (
-            <>
-              <div className={styles.chatHeader}>
-                {selectedUser.username}
-              </div>
-              <div className={styles.messageArea}>
-                {messages.map(renderMessage)}
-                <div ref={messageEndRef} />
-              </div>
-              <div className={styles.inputArea}>
-                <Input.TextArea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="请输入消息"
-                  autoSize={{ minRows: 2, maxRows: 4 }}
-                  onPressEnter={(e) => {
-                    if (e.nativeEvent.isComposing) return;
-                    if (!e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
+        {(!selectedUser || !isMobile() || showSider) && (
+          <Sider width={isMobile() ? '100%' : 300} className={styles.sider}>
+            <List
+              className={styles.chatList}
+              itemLayout="horizontal"
+              dataSource={onlineUsers}
+              renderItem={(item) => (
+                <List.Item
+                  className={styles.chatItem}
+                  onClick={() => {
+                    setSelectedUser(item)
+                    if (isMobile()) {
+                      setShowSider(false)
                     }
                   }}
-                />
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={handleSendMessage}
                 >
-                  发送
-                </Button>
-              </div>
-            </>
-          ) : (
-            <div className={styles.noChat}>
-              请选择一个聊天
-            </div>
-          )}
-        </Content>
+                  <List.Item.Meta
+                    avatar={
+                      <Avatar style={{ backgroundColor: '#f0f0f0', color: '#666' }}>
+                        {getAvatarText(item.username)}
+                      </Avatar>
+                    }
+                    title={item.username}
+                  />
+                </List.Item>
+              )}
+            />
+          </Sider>
+        )}
+        {(!isMobile() || selectedUser) && (
+          <Content className={styles.content}>
+            {selectedUser ? (
+              <>
+                <div className={styles.chatHeader}>{selectedUser.username}</div>
+                <div className={styles.messageArea}>
+                  {messages.map(renderMessage)}
+                  <div ref={messageEndRef} />
+                </div>
+                <div className={styles.inputArea}>
+                  <Input.TextArea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="请输入消息"
+                    autoSize={{ minRows: 2, maxRows: 4 }}
+                    onPressEnter={(e) => {
+                      if (e.nativeEvent.isComposing) return
+                      if (!e.shiftKey) {
+                        e.preventDefault()
+                        handleSendMessage()
+                      }
+                    }}
+                  />
+                  <Button type="primary" icon={<SendOutlined />} onClick={handleSendMessage}>
+                    发送
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className={styles.noChat}>请选择一个聊天</div>
+            )}
+          </Content>
+        )}
       </Layout>
     </Layout>
   )
 }
 
-export default Chat 
+export default Chat
