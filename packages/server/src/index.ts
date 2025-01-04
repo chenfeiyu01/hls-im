@@ -2,7 +2,12 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import cors from 'cors'
-import routes from './routes/index.js'
+import { db, initDB } from './config/db'
+import path from 'path'
+import routes from './routes'
+
+// 初始化数据库
+initDB()
 
 const app = express()
 const httpServer = createServer(app)
@@ -31,6 +36,17 @@ app.use(cors())
 app.use(express.json())
 app.use('/api', routes)
 
+interface DBMessage {
+  id: string;
+  content: string;
+  from_user_id: string;
+  to_user_id: string;
+  chat_id: string;
+  from_username: string;
+  is_group_message: number;
+  timestamp: string;
+}
+
 io.on('connection', (socket) => {
   console.log('用户连接:', socket.id)
 
@@ -56,62 +72,101 @@ io.on('connection', (socket) => {
 
   // 处理新消息
   socket.on('message:send', (message) => {
-    console.log('message:send', message)
     const { from, to, content } = message
 
-    // 处理群聊消息
-    if (to.id === GROUP_ID) {
-      const newMessage = {
-        id: Date.now().toString(),
-        content,
-        from,
-        to,
-        timestamp: new Date(),
-        isGroupMessage: true
+    try {
+      const newMessageId = Date.now().toString()
+      const timestamp = new Date().toISOString()
+
+      if (to.id === GROUP_ID) {
+        const query = `
+          INSERT INTO messages (id, content, from_user_id, to_user_id, chat_id, is_group_message, timestamp)
+          VALUES (?, ?, ?, ?, ?, 1, ?)
+        `
+        
+        db.run(query, [newMessageId, content, from.id, GROUP_ID, GROUP_ID, timestamp], (err) => {
+          if (err) {
+            console.error('Error saving group message:', err)
+            return
+          }
+
+          io.to(GROUP_ID).emit('message:receive', {
+            id: newMessageId,
+            content,
+            from,
+            to,
+            timestamp: new Date(timestamp),
+            isGroupMessage: true
+          })
+        })
+        return
       }
 
-      // 保存群聊消息
-      if (!messageHistory.has(GROUP_ID)) {
-        messageHistory.set(GROUP_ID, [])
-      }
-      messageHistory.get(GROUP_ID)?.push(newMessage)
+      // 处理私聊消息
+      const chatId = [from.id, to.id].sort().join(':')
+      const query = `
+        INSERT INTO messages (id, content, from_user_id, to_user_id, chat_id, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `
 
-      // 广播给所有群成员
-      io.to(GROUP_ID).emit('message:receive', newMessage)
-      return
-    }
+      db.run(query, [newMessageId, content, from.id, to.id, chatId, timestamp], (err) => {
+        if (err) {
+          console.error('Error saving private message:', err)
+          return
+        }
 
-    // 处理私聊消息
-    const chatId = [from.id, to.id].sort().join(':')
-    if (!messageHistory.has(chatId)) {
-      messageHistory.set(chatId, [])
-    }
-    const newMessage = {
-      id: Date.now().toString(),
-      content,
-      from,
-      to,
-      timestamp: new Date()
-    }
-    messageHistory.get(chatId)?.push(newMessage)
+        const messageToSend = {
+          id: newMessageId,
+          content,
+          from,
+          to,
+          timestamp: new Date(timestamp)
+        }
 
-    io.to(to.socketId).emit('message:receive', newMessage)
-    socket.emit('message:receive', newMessage)
+        io.to(to.socketId).emit('message:receive', messageToSend)
+        socket.emit('message:receive', messageToSend)
+      })
+    } catch (error) {
+      console.error('Error in message:send:', error)
+    }
   })
 
   // 获取历史消息
   socket.on('message:history', ({ userId1, userId2 }) => {
-    // 获取群聊消息
-    if (userId2 === GROUP_ID) {
-      const messages = messageHistory.get(GROUP_ID) || []
-      socket.emit('message:history', messages)
-      return
-    }
+    const chatId = userId2 === GROUP_ID ? GROUP_ID : [userId1, userId2].sort().join(':')
+    
+    const query = `
+      SELECT m.*, u.username as from_username
+      FROM messages m
+      JOIN users u ON m.from_user_id = u.id
+      WHERE m.chat_id = ?
+      ORDER BY m.timestamp DESC
+      LIMIT 50
+    `
 
-    // 获取私聊消息
-    const chatId = [userId1, userId2].sort().join(':')
-    const messages = messageHistory.get(chatId) || []
-    socket.emit('message:history', messages)
+    db.all(query, [chatId], (err, rows) => {
+      if (err) {
+        console.error('Error fetching message history:', err)
+        socket.emit('message:history', [])
+        return
+      }
+
+      const messages = rows.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        from: {
+          id: msg.from_user_id,
+          username: msg.from_username
+        },
+        to: {
+          id: msg.to_user_id
+        },
+        timestamp: new Date(msg.timestamp),
+        isGroupMessage: Boolean(msg.is_group_message)
+      }))
+
+      socket.emit('message:history', messages.reverse())
+    })
   })
 })
 
