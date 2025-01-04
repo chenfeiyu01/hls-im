@@ -23,6 +23,12 @@ interface Message {
   isGroupMessage?: boolean
 }
 
+interface MessageHistoryResponse {
+  messages: Message[];
+  hasMore: boolean;
+  total: number;
+}
+
 // 获取头像显示文字
 const getAvatarText = (username: string): string => {
   if (!username) return '?'
@@ -53,61 +59,135 @@ const Chat: React.FC = () => {
   const [showSider, setShowSider] = useState(!isMobile())
   // 添加状态来跟踪当前激活的消息
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const messageAreaRef = useRef<HTMLDivElement>(null)
+  // 添加新的状态
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true)
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 
   const scrollToBottom = () => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // 修改消息接收处理
   useEffect(() => {
-    // 连接 Socket.IO 服务器
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/'
-    console.log('SOCKET_URL', import.meta.env.VITE_SOCKET_URL, SOCKET_URL)
+    setIsLoadingUsers(true)
     const newSocket = io('https://hls.chenpaopao.com:8888', {
       reconnection: false,
     })
 
-    // 发送登录信息
     newSocket.emit('user:login', {
       id: currentUser.id,
       username: currentUser.username,
     })
 
-    // 监听在线用户列表更新
     newSocket.on('users:online', (users: ChatUser[]) => {
       setOnlineUsers(users.filter((user) => user.socketId !== newSocket.id))
-    })
-
-    // 接收新消息
-    newSocket.on('message:receive', (message: Message) => {
-      setMessages((prev) => [...prev, message])
+      setIsLoadingUsers(false)
     })
 
     setSocket(newSocket)
 
-    // 清理函数
     return () => {
       newSocket.disconnect()
     }
-  }, []) // 移除 currentUser 依赖
+  }, [currentUser.id, currentUser.username])
+
+  // 单独处理新消息接收
+  useEffect(() => {
+    if (!socket) return
+
+    const handleNewMessage = (message: Message) => {
+      // 只有当消息属于当前聊天时才显示
+      if (selectedUser && (
+        // 群聊消息且当前在群聊
+        (message.isGroupMessage && selectedUser.id === 'group_all') ||
+        // 私聊消息且来自当前聊天对象或自己发送的
+        (!message.isGroupMessage && (
+          message.from.id === selectedUser.id || 
+          message.to.id === selectedUser.id
+        ))
+      )) {
+        setMessages(prev => [...prev, message])
+      }
+    }
+
+    socket.on('message:receive', handleNewMessage)
+
+    return () => {
+      socket.off('message:receive', handleNewMessage)
+    }
+  }, [socket, selectedUser])
 
   // 监听消息变化，自动滚动到底部
   useEffect(() => {
     scrollToBottom()
   }, [messages])
 
-  // 选择聊天对象时加载历史消息
+  // 监听消息区域的滚动
+  const handleScroll = () => {
+    const messageArea = messageAreaRef.current
+    if (!messageArea || isLoadingMore || !hasMore) return
+
+    // 当滚动到顶部时加载更多
+    if (messageArea.scrollTop === 0) {
+      loadMoreMessages()
+    }
+  }
+
+  // 加载更多消息
+  const loadMoreMessages = () => {
+    if (!selectedUser || !socket || isLoadingMore || !hasMore) return
+    setIsLoadingMore(true)
+
+    socket.emit('message:history', {
+      userId1: currentUser.id,
+      userId2: selectedUser.id,
+      page: currentPage,
+      pageSize: 5
+    })
+  }
+
+  // 修改历史消息处理
   useEffect(() => {
     if (selectedUser && socket) {
+      // 重置状态
+      setCurrentPage(1)
+      setHasMore(true)
+      setMessages([])
+      setIsLoadingMessages(true)
+      
+      const handleMessageHistory = ({ messages: newMessages, hasMore: more }: MessageHistoryResponse) => {
+        console.log('newMessages 历史消息', newMessages)
+        setIsLoadingMessages(false)
+        setIsLoadingMore(false)
+        if (currentPage === 1) {
+          setMessages(newMessages)
+        } else {
+          setMessages(prev => [...newMessages, ...prev])
+        }
+        setHasMore(more)
+        setCurrentPage(prev => prev + 1)
+      }
+
+      // 请求历史消息
+      console.log('请求历史消息', currentUser.id, selectedUser.id)
       socket.emit('message:history', {
         userId1: currentUser.id,
         userId2: selectedUser.id,
+        page: 1,
+        pageSize: 20
       })
 
-      socket.on('message:history', (history: Message[]) => {
-        setMessages(history)
-      })
+      socket.on('message:history', handleMessageHistory)
+
+      return () => {
+        socket.off('message:history', handleMessageHistory)
+      }
     }
-  }, [selectedUser, socket])
+  }, [selectedUser, socket, currentUser.id]) // 移除 currentPage 依赖
 
   // 在 useEffect 中添加窗口大小变化监听
   useEffect(() => {
@@ -221,6 +301,8 @@ const Chat: React.FC = () => {
               className={styles.chatList}
               itemLayout="horizontal"
               dataSource={onlineUsers}
+              loading={isLoadingUsers}
+              locale={{ emptyText: '暂无在线用户' }}
               renderItem={(item) => (
                 <List.Item
                   className={styles.chatItem}
@@ -249,8 +331,31 @@ const Chat: React.FC = () => {
             {selectedUser ? (
               <>
                 <div className={styles.chatHeader}>{selectedUser.username}</div>
-                <div className={styles.messageArea}>
-                  {messages.map(renderMessage)}
+                <div 
+                  ref={messageAreaRef}
+                  className={styles.messageArea}
+                  onScroll={handleScroll}
+                >
+                  {isLoadingMore && (
+                    <div className={styles.loadingMore}>
+                      加载更多...
+                    </div>
+                  )}
+                  {isLoadingMessages ? (
+                    <div className={styles.loading}>
+                      <div className={styles.loadingDots}>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className={styles.noMessages}>
+                      暂无消息记录
+                    </div>
+                  ) : (
+                    messages.map(renderMessage)
+                  )}
                   <div ref={messageEndRef} />
                 </div>
                 <div className={styles.inputArea}>

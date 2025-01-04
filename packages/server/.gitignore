@@ -31,5 +31,5 @@ pnpm-debug.log*
 Thumbs.db
 
 # Database
-*.db
-data/ 
+packages/server/data/*.db
+packages/server/data/chat.db 

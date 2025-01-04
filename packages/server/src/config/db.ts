@@ -17,12 +17,15 @@ export const db = new sqlite3.Database(dbPath)
 
 export const initDB = () => {
   db.serialize(() => {
+    // 删除旧表
+    db.run('DROP TABLE IF EXISTS messages')
+    db.run('DROP TABLE IF EXISTS users')
+
     // 创建用户表
-    db.run(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `)
