@@ -53,7 +53,7 @@ const Chat: React.FC = () => {
     // 连接 Socket.IO 服务器
     const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || '/'
     console.log('SOCKET_URL', import.meta.env.VITE_SOCKET_URL, SOCKET_URL)
-    const newSocket = io('/', {
+    const newSocket = io('https://hls.chenpaopao.com:8888', {
       reconnection: false
     });
     
