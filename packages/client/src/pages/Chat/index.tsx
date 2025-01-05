@@ -29,6 +29,11 @@ interface MessageHistoryResponse {
   total: number;
 }
 
+// 添加未读消息计数接口
+interface ChatUserWithUnread extends ChatUser {
+  unreadCount?: number;
+}
+
 // 获取头像显示文字
 const getAvatarText = (username: string): string => {
   if (!username) return '?'
@@ -51,7 +56,7 @@ const Chat: React.FC = () => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
   const [message, setMessage] = useState('')
   const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null)
-  const [onlineUsers, setOnlineUsers] = useState<ChatUser[]>([])
+  const [onlineUsers, setOnlineUsers] = useState<ChatUserWithUnread[]>([])
   const [socket, setSocket] = useState<Socket | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const messageEndRef = useRef<HTMLDivElement>(null)
@@ -100,11 +105,31 @@ const Chat: React.FC = () => {
     if (!socket) return
 
     const handleNewMessage = (message: Message) => {
+      // 更新未读消息计数
+      if (
+        message.from.id !== currentUser.id && // 不是自己发的消息
+        (!selectedUser || message.from.id !== selectedUser.id) // 不是当前聊天窗口
+      ) {
+        if (message.isGroupMessage) {
+          // 群聊消息
+          setOnlineUsers(prev => prev.map(user => 
+            user.id === 'group_all'
+              ? { ...user, unreadCount: (user.unreadCount || 0) + 1 }
+              : user
+          ))
+        } else {
+          // 私聊消息
+          setOnlineUsers(prev => prev.map(user => 
+            user.id === message.from.id
+              ? { ...user, unreadCount: (user.unreadCount || 0) + 1 }
+              : user
+          ))
+        }
+      }
+
       // 只有当消息属于当前聊天时才显示
       if (selectedUser && (
-        // 群聊消息且当前在群聊
         (message.isGroupMessage && selectedUser.id === 'group_all') ||
-        // 私聊消息且来自当前聊天对象或自己发送的
         (!message.isGroupMessage && (
           message.from.id === selectedUser.id || 
           message.to.id === selectedUser.id
@@ -115,11 +140,8 @@ const Chat: React.FC = () => {
     }
 
     socket.on('message:receive', handleNewMessage)
-
-    return () => {
-      socket.off('message:receive', handleNewMessage)
-    }
-  }, [socket, selectedUser])
+    return () => socket.off('message:receive', handleNewMessage)
+  }, [socket, selectedUser, currentUser.id])
 
   // 监听消息变化，自动滚动到底部
   useEffect(() => {
@@ -278,6 +300,17 @@ const Chat: React.FC = () => {
     )
   }
 
+  // 选择用户时清除未读计数
+  const handleSelectUser = (user: ChatUserWithUnread) => {
+    setSelectedUser(user)
+    setOnlineUsers(prev => prev.map(u => 
+      u.id === user.id ? { ...u, unreadCount: 0 } : u
+    ))
+    if (isMobile()) {
+      setShowSider(false)
+    }
+  }
+
   return (
     <Layout className={styles.chatLayout}>
       <Header className={styles.header}>
@@ -306,12 +339,7 @@ const Chat: React.FC = () => {
               renderItem={(item) => (
                 <List.Item
                   className={styles.chatItem}
-                  onClick={() => {
-                    setSelectedUser(item)
-                    if (isMobile()) {
-                      setShowSider(false)
-                    }
-                  }}
+                  onClick={() => handleSelectUser(item)}
                 >
                   <List.Item.Meta
                     avatar={
@@ -319,7 +347,16 @@ const Chat: React.FC = () => {
                         {getAvatarText(item.username)}
                       </Avatar>
                     }
-                    title={item.username}
+                    title={
+                      <div className={styles.userTitle}>
+                        <span>{item.username}</span>
+                        {item.unreadCount ? (
+                          <span className={styles.unreadBadge}>
+                            {item.unreadCount}
+                          </span>
+                        ) : null}
+                      </div>
+                    }
                   />
                 </List.Item>
               )}

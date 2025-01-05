@@ -384,3 +384,31 @@
   color: #999;
   font-size: 14px;
 }
+
+.userTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.unreadBadge {
+  background-color: #ff4d4f;
+  color: white;
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 12px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatItem {
+  &:hover {
+    .unreadBadge {
+      background-color: #ff7875;
+    }
+  }
+}
