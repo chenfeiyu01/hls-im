@@ -19,6 +19,7 @@ export const initDB = () => {
   db.serialize(() => {
     // 删除旧表
     db.run('DROP TABLE IF EXISTS messages')
+    db.run('DROP TABLE IF EXISTS friendships')
     db.run('DROP TABLE IF EXISTS users')
 
     // 创建用户表
@@ -27,6 +28,18 @@ export const initDB = () => {
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    // 创建好友关系表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS friendships (
+        user_id TEXT NOT NULL,
+        friend_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, friend_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (friend_id) REFERENCES users (id)
       )
     `)
 
@@ -41,6 +54,18 @@ export const initDB = () => {
         is_group_message INTEGER DEFAULT 0,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (from_user_id) REFERENCES users (id)
+      )
+    `)
+
+    // 创建消息已读表
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reads (
+        user_id TEXT NOT NULL,
+        friend_id TEXT NOT NULL,
+        is_group_message INTEGER DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, friend_id, is_group_message),
+        FOREIGN KEY (user_id) REFERENCES users (id)
       )
     `)
 
