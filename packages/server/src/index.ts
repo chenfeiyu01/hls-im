@@ -33,6 +33,8 @@ const onlineUsers = new Map()
 const messageHistory = new Map<string, any[]>()
 // 存储用户 ID 到 socket ID 的映射
 const userSocketMap = new Map<string, string>()
+// 在文件开头添加在线用户表
+const online_users = new Map<string, { user_id: string, socket_id: string }>()
 
 app.use(cors())
 app.use(express.json())
@@ -49,13 +51,19 @@ interface DBMessage {
   timestamp: string
 }
 
-io.on('connection', (socket) => {
+// 添加 Socket 类型扩展
+interface CustomSocket extends Socket {
+  user_id?: string;
+}
+
+io.on('connection', (socket: CustomSocket) => {
   console.log('用户连接:', socket.id)
 
   // 用户登录
   socket.on('user:login', (user) => {
-    // 保存用户 ID 和 socket ID 的映射
+    socket.user_id = user.id
     userSocketMap.set(user.id, socket.id)
+    online_users.set(socket.id, { user_id: user.id, socket_id: socket.id })
 
     const query = `
       INSERT OR REPLACE INTO users (id, username)
@@ -69,21 +77,153 @@ io.on('connection', (socket) => {
       }
 
       socket.join(GROUP_ID)
-      onlineUsers.set(socket.id, { ...user, socketId: socket.id })
-      const onlineUsersList = Array.from(onlineUsers.values())
-      io.emit('users:online', [groupChat, ...onlineUsersList])
+
+      // 直接获取好友列表
+      getFriendsList(user.id, socket)
     })
   })
 
-  // 断开连接时清理映射
-  socket.on('disconnect', () => {
-    const user = onlineUsers.get(socket.id)
-    if (user) {
-      userSocketMap.delete(user.id)
+  // 搜索用户
+  socket.on('users:search', ({ username }) => {
+    if (!socket.user_id) {
+      socket.emit('users:search:result', [])
+      return
     }
-    onlineUsers.delete(socket.id)
-    io.emit('users:online', [groupChat, ...Array.from(onlineUsers.values())])
+
+    const query = `
+      SELECT u.id, u.username,
+             CASE WHEN f.friend_id IS NOT NULL THEN 1 ELSE 0 END as is_friend
+      FROM users u
+      LEFT JOIN friendships f ON f.friend_id = u.id AND f.user_id = ?
+      WHERE u.username LIKE ? AND u.id != ?
+      LIMIT 10
+    `
+    
+    db.all(query, [socket.user_id, `%${username}%`, socket.user_id], (err, users) => {
+      if (err) {
+        console.error('Error searching users:', err)
+        socket.emit('users:search:result', [])
+        return
+      }
+
+      const results = users.map(user => ({
+        id: user.id,
+        username: user.username,
+        isFriend: Boolean(user.is_friend),
+        isOnline: Boolean(userSocketMap.get(user.id))
+      }))
+
+      socket.emit('users:search:result', results)
+    })
   })
+
+  // 获取好友列表的辅助函数
+  const getFriendsList = (userId: string, socket: Socket) => {
+    const query = `
+      SELECT 
+        u.id, 
+        u.username,
+        f.created_at as friend_since,
+        (
+          SELECT COUNT(*)
+          FROM messages m
+          WHERE m.chat_id = CASE 
+            WHEN m.is_group_message = 1 THEN 'group_all'
+            ELSE (
+              CASE 
+                WHEN m.from_user_id < m.to_user_id 
+                THEN m.from_user_id || ':' || m.to_user_id
+                ELSE m.to_user_id || ':' || m.from_user_id
+              END
+            )
+          END
+          AND (
+            (m.is_group_message = 0 AND (m.from_user_id = u.id OR m.to_user_id = u.id))
+            OR
+            (m.is_group_message = 1)
+          )
+          AND m.timestamp > COALESCE(
+            (
+              SELECT MAX(timestamp)
+              FROM message_reads
+              WHERE user_id = ? AND (
+                (is_group_message = 0 AND friend_id = u.id)
+                OR
+                (is_group_message = 1 AND friend_id = 'group_all')
+              )
+            ),
+            '1970-01-01'
+          )
+        ) as unread_count
+      FROM users u
+      INNER JOIN friendships f ON f.friend_id = u.id
+      WHERE f.user_id = ?
+      ORDER BY f.created_at DESC
+    `
+
+    db.all(query, [userId, userId], (err, friends) => {
+      if (err) {
+        console.error('Error fetching friends:', err)
+        return
+      }
+
+      const friendsList = [
+        {
+          ...groupChat,
+          isOnline: true,
+          unreadCount: 0 // 群聊未读消息数会在上面的查询中计算
+        },
+        ...friends.map(f => ({
+          id: f.id,
+          username: f.username,
+          socketId: userSocketMap.get(f.id) || null,
+          isOnline: Boolean(userSocketMap.get(f.id)),
+          unreadCount: f.unread_count,
+          friendSince: f.friend_since
+        }))
+      ]
+
+      socket.emit('friends:list', friendsList)
+    })
+  }
+
+  // 断开连接时更新在线状态
+  socket.on('disconnect', () => {
+    const user = online_users.get(socket.id)
+    if (user) {
+      online_users.delete(socket.id)
+      userSocketMap.delete(user.user_id)
+      
+      // 通知所有好友该用户下线
+      notifyFriendsStatus(user.user_id, false)
+    }
+  })
+
+  // 通知好友状态变化的辅助函数
+  const notifyFriendsStatus = (userId: string, isOnline: boolean) => {
+    const query = `
+      SELECT user_id
+      FROM friendships
+      WHERE friend_id = ?
+    `
+
+    db.all(query, [userId], (err, friends) => {
+      if (err) {
+        console.error('Error fetching friends for status update:', err)
+        return
+      }
+
+      friends.forEach(friend => {
+        const friendSocket = userSocketMap.get(friend.user_id)
+        if (friendSocket) {
+          io.to(friendSocket).emit('friend:status', {
+            friendId: userId,
+            isOnline
+          })
+        }
+      })
+    })
+  }
 
   // 处理新消息
   socket.on('message:send', (message) => {
@@ -230,6 +370,57 @@ io.on('connection', (socket) => {
           total,
         })
       })
+    })
+  })
+
+  // 添加好友
+  socket.on('friend:add', ({ friendId }) => {
+    if (!socket.user_id) {
+      socket.emit('friend:add:error', { message: '未登录' })
+      return
+    }
+
+    const query = `
+      INSERT INTO friendships (user_id, friend_id)
+      VALUES (?, ?), (?, ?)
+    `
+
+    db.run(query, [socket.user_id, friendId, friendId, socket.user_id], (err) => {
+      if (err) {
+        console.error('Error adding friend:', err)
+        socket.emit('friend:add:error', { message: '添加好友失败' })
+        return
+      }
+
+      // 通知双方更新好友列表
+      getFriendsList(socket.user_id, socket)
+      const friendSocket = userSocketMap.get(friendId)
+      if (friendSocket) {
+        getFriendsList(friendId, io.sockets.sockets.get(friendSocket))
+      }
+      
+      socket.emit('friend:added', { success: true })
+    })
+  })
+
+  // 添加标记消息已读接口
+  socket.on('messages:read', ({ chatId }) => {
+    if (!socket.user_id) return
+
+    const query = `
+      INSERT INTO message_reads (user_id, friend_id, is_group_message, timestamp)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, friend_id, is_group_message)
+      DO UPDATE SET timestamp = CURRENT_TIMESTAMP
+    `
+
+    const isGroup = chatId === GROUP_ID
+    const friendId = isGroup ? GROUP_ID : chatId.split(':').find(id => id !== socket.user_id)
+
+    db.run(query, [socket.user_id, friendId, isGroup ? 1 : 0], (err) => {
+      if (err) {
+        console.error('Error marking messages as read:', err)
+      }
     })
   })
 })
